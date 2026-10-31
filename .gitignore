@@ -1,0 +1,7 @@
+.pio/
+.pio-core/
+.test-build/
+include/Secrets.h
+.vscode/
+.DS_Store
+__pycache__/
