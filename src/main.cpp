@@ -21,14 +21,17 @@ void lightTask(void*) {
     static LedRenderer leds; // RMT symbol buffer lives outside the task stack.
     MotionEngine engine;
     LightSettings settings = initialLight;
-    const uint32_t boot = millis();
-    engine.configure(settings, boot);
+    engine.configure(settings, millis());
     pinMode(hw::pirBottomPin, INPUT_PULLDOWN);
     pinMode(hw::pirTopPin, INPUT_PULLDOWN);
     if (!leds.begin()) Serial.println("LED: RMT initialization failed");
     PirFilter bottom, top;
-    bool testing = false;
-    uint32_t testAt = 0;
+    int testStep = -1;
+    Job stepTest;
+    bool warming = hw::pirWarmupMs > 0;
+    bool rawBottom = false, rawTop = false;
+    bool otaFrameSent = false;
+    if (warming) lightLoop.async.delay(hw::pirWarmupMs, [&] { warming = false; });
     applyLight.subscribe([&](LightSettings next) {
         next.normalize();
         if (!(next.bottom == settings.bottom)) bottom.reset(false, millis());
@@ -39,20 +42,25 @@ void lightTask(void*) {
     testLight.subscribe([&](TestCommand command) {
         if (command == TestCommand::Bottom) engine.motion(Direction::Up, millis());
         if (command == TestCommand::Top) engine.motion(Direction::Down, millis());
-        if (command == TestCommand::Steps) { testing = true; testAt = millis(); }
-        if (command == TestCommand::Stop) testing = false;
+        if (command == TestCommand::Steps) {
+            stepTest.breakFn();
+            testStep = 0;
+            stepTest = lightLoop.async.repeat(1000, [&] {
+                if (++testStep >= int(hw::stepCount)) {
+                    testStep = -1;
+                    stepTest.breakFn();
+                }
+            });
+        }
+        if (command == TestCommand::Stop) { stepTest.breakFn(); testStep = -1; }
     });
-    uint32_t lastFrame = 0, lastPublish = 0;
-    bool warming = hw::pirWarmupMs > 0;
-    bool otaFrameSent = false;
-    for (;;) {
-        lightLoop.run(0);
+    // Both inputs are sampled together so simultaneous edges keep their meaning.
+    lightLoop.async.repeat(5, [&] {
         const uint32_t now = millis();
-        const bool rawBottom = digitalRead(hw::pirBottomPin) == HIGH;
-        const bool rawTop = digitalRead(hw::pirTopPin) == HIGH;
+        rawBottom = digitalRead(hw::pirBottomPin) == HIGH;
+        rawTop = digitalRead(hw::pirTopPin) == HIGH;
         const bool logicalBottom = (rawBottom == hw::pirActiveHigh) != settings.bottom.inverted;
         const bool logicalTop = (rawTop == hw::pirActiveHigh) != settings.top.inverted;
-        if (warming && uint32_t(now - boot) >= hw::pirWarmupMs) warming = false;
         bool bottomEvent = false, topEvent = false;
         if (warming) {
             bottom.reset(logicalBottom, now);
@@ -63,33 +71,34 @@ void lightTask(void*) {
         }
         engine.sensors(bottom.active(), top.active(), bottomEvent, topEvent, now);
         engine.tick(now);
-        int testStep = -1;
-        if (testing) {
-            const uint32_t step = uint32_t(now - testAt) / 1000;
-            if (step >= hw::stepCount) testing = false;
-            else testStep = int(step);
-        }
+    });
+    lightLoop.async.repeat(hw::frameMs, [&] {
         const bool ota = otaActive.load();
         if (!ota) otaFrameSent = false;
-        if ((ota && !otaFrameSent) || (!ota && uint32_t(now - lastFrame) >= hw::frameMs)) {
-            lastFrame = now;
+        if (!ota || !otaFrameSent) {
+            const uint32_t now = millis();
+            engine.tick(now);
             leds.render(settings, engine, now, ota, testStep);
             const bool shown = leds.show();
             if (ota && shown) { otaFrameSent = true; otaLightReady.store(true); }
         }
-        if (uint32_t(now - lastPublish) >= 100) {
-            lastPublish = now;
-            RuntimeState state;
-            state.rawBottom = rawBottom; state.rawTop = rawTop;
-            state.bottom = bottom.active(); state.top = top.active();
-            state.warmup = warming; state.ledReady = leds.ready();
-            state.testing = testing; state.crossed = engine.crossed();
-            state.phase = engine.phase(); state.origin = engine.origin();
-            state.fading = engine.transitionDirection(); state.remainingMs = engine.remaining(now);
-            state.ledErrors = leds.errors();
-            state.freeStack = uxTaskGetStackHighWaterMark(nullptr);
-            runtimeState.next(state);
-        }
+    });
+    lightLoop.async.repeat(100, [&] {
+        const uint32_t now = millis();
+        RuntimeState state;
+        state.rawBottom = rawBottom; state.rawTop = rawTop;
+        state.bottom = bottom.active(); state.top = top.active();
+        state.warmup = warming; state.ledReady = leds.ready();
+        state.testing = testStep >= 0; state.crossed = engine.crossed();
+        state.phase = engine.phase(); state.origin = engine.origin();
+        state.fading = engine.transitionDirection(); state.remainingMs = engine.remaining(now);
+        state.ledErrors = leds.errors();
+        state.freeStack = uxTaskGetStackHighWaterMark(nullptr);
+        runtimeState.next(state);
+    });
+    for (;;) {
+        // run() also ticks Async. Yield even if the command queue stays busy.
+        lightLoop.run(0);
         vTaskDelay(1);
     }
 }

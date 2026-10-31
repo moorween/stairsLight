@@ -43,6 +43,11 @@ void NetworkUi::begin(LightSettings light, NetworkConfig network) {
     }, networkLoop, Delivery::Latest);
     rebuildMqtt();
     configureOta();
+    networkLoop.async.repeat(100, [this] {
+        if (otaActive.load()) return;
+        pollWifi();
+        pollScan();
+    });
     Serial.printf("Web UI: AP=%s, hostname=%s.local\n", apName_.c_str(), net_.hostname.c_str());
 }
 
@@ -50,13 +55,9 @@ void NetworkUi::tick() {
     // Once flash writing begins, don't issue MQTT or NVS writes.
     ArduinoOTA.handle();
     if (otaActive.load()) return;
-    pollWifi();
-    pollScan();
     ui_.tick();
-    if (restartAt_ && int32_t(millis() - restartAt_) >= 0) { saveDirty(); ESP.restart(); }
     if (mqttRebuild_) { mqttRebuild_ = false; rebuildMqtt(); }
     if (ha_ && !candidate_) ha_->tick();
-    if (dirty_ && uint32_t(millis() - dirtyAt_) >= 2000) saveDirty();
 }
 
 bool NetworkUi::submit(LightSettings next) {
@@ -69,7 +70,7 @@ bool NetworkUi::submit(LightSettings next) {
     }
     light_ = next;
     dirty_ = true;
-    dirtyAt_ = millis();
+    scheduleSave();
     if (ha_) ha_->publishSettings();
     return true;
 }
@@ -80,9 +81,28 @@ void NetworkUi::message(const String& text) {
 }
 
 void NetworkUi::saveDirty() {
+    saveJob_.breakFn();
     if (!dirty_) return;
     if (storage_.saveLight(light_)) dirty_ = false;
-    else { message("Ошибка сохранения настроек света в NVS"); dirtyAt_ = millis(); }
+    else { message("Ошибка сохранения настроек света в NVS"); scheduleSave(); }
+}
+
+void NetworkUi::scheduleSave() {
+    // Cancel the previous deadline: sliders cause one write after the last edit.
+    saveJob_.breakFn();
+    saveJob_ = networkLoop.async.delay(2000, [this] {
+        if (otaActive.load()) scheduleSave();
+        else saveDirty();
+    });
+}
+
+void NetworkUi::scheduleRestart(int delayMs) {
+    restartJob_.breakFn();
+    restartJob_ = networkLoop.async.delay(delayMs, [this] {
+        if (otaActive.load()) { scheduleRestart(1000); return; }
+        saveDirty();
+        ESP.restart();
+    });
 }
 
 void NetworkUi::startAp() {
@@ -300,7 +320,7 @@ void NetworkUi::saveSecurity() {
     net_ = next;
     saveDirty();
     message("Сохранено. Перезагрузка через 3 секунды");
-    restartAt_ = millis() + 3000;
+    scheduleRestart(3000);
 }
 
 void NetworkUi::reset() {
@@ -314,9 +334,10 @@ void NetworkUi::reset() {
     } else if (resetChoice_ == 2) {
         if (!storage_.clear()) { message("Ошибка сброса NVS"); return; }
         dirty_ = false;
+        saveJob_.breakFn();
     } else { message("Выберите, какие настройки сбросить"); return; }
     message("Сброс выполнен. Перезагрузка через 3 секунды");
-    restartAt_ = millis() + 3000;
+    scheduleRestart(3000);
 }
 
 void NetworkUi::build(sets::Builder& b) {
@@ -419,7 +440,7 @@ void NetworkUi::build(sets::Builder& b) {
     if (b.Button(id::SaveNow, "Сохранить настройки света сейчас")) {
         saveDirty(); if (!dirty_) message("Настройки света сохранены");
     }
-    if (b.Button(id::Restart, "Перезагрузить")) { saveDirty(); restartAt_ = millis() + 2000; }
+    if (b.Button(id::Restart, "Перезагрузить")) { saveDirty(); scheduleRestart(2000); }
     b.Select(id::ResetChoice, "Сброс настроек", "Не выбран;Только Wi-Fi и MQTT;Все настройки", &resetChoice_);
     if (b.Button(id::ResetButton, "Выполнить сброс…")) confirmReset_ = true;
     bool confirmed = false;

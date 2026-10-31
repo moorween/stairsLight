@@ -27,8 +27,9 @@ private:
     bool scanBusy_ = false, mqttRebuild_ = false, wifiOpen_ = false, clearMqttPass_ = false;
     bool otaConfigured_ = false;
     bool confirmReset_ = false;
-    uint32_t dirtyAt_ = 0, connectAt_ = 0, lastAttempt_ = 0, disconnectedAt_ = 0;
-    uint32_t stableAt_ = 0, restartAt_ = 0;
+    uint32_t connectAt_ = 0, lastAttempt_ = 0, disconnectedAt_ = 0;
+    uint32_t stableAt_ = 0;
+    Job saveJob_, restartJob_;
     String apName_, candidateSsid_, candidatePassword_;
     String wifiPassEdit_, mqttPassEdit_, apPassEdit_, webPassEdit_, otaPassEdit_;
     String status_ = "Готово", scanOptions_ = "Сначала нажмите Поиск";
@@ -52,6 +53,8 @@ private:
     void configureOta();
     void saveSecurity();
     void saveDirty();
+    void scheduleSave();
+    void scheduleRestart(int delayMs);
     void reset();
     void message(const String& message);
 };
