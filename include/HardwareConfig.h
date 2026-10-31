@@ -13,7 +13,7 @@ inline constexpr bool pirActiveHigh = true;
 inline constexpr uint32_t pirWarmupMs = 30000;
 inline constexpr uint32_t frameMs = 20;
 // Set RGB order here if your strip differs. Default WS2812 = GRB.
-inline constexpr std::array<uint8_t, 3> wireChannels{1, 0, 2};
+inline constexpr std::array<uint8_t, 3> wireChannels{2, 0, 1};
 inline constexpr std::array<uint16_t, 15> stepLengths{
     19, 19, 19, 19, 18, 19, 25, 19, 18, 18, 18, 18, 18, 18, 18};
 inline constexpr size_t stepCount = stepLengths.size();
