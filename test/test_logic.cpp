@@ -183,7 +183,7 @@ void validation() {
     c.bottom.onMs = UINT32_MAX; c.top.offMs = UINT32_MAX;
     c.backgroundColor = UINT32_MAX;
     c.normalize();
-    assert(c.effect == 5 && c.stepDelayMs == 3000 && c.holdMs == 1000);
+    assert(c.effect == effectCount - 1 && c.stepDelayMs == 3000 && c.holdMs == 1000);
     assert(c.bottom.onMs == 5000 && c.top.offMs == 10000);
     assert(c.backgroundColor == 0xFFFFFF);
 }

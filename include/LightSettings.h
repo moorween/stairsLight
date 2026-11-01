@@ -3,6 +3,21 @@
 #include <cstdint>
 #include <tuple>
 
+// Append new entries to preserve effect IDs already stored in NVS and HA.
+enum class BackgroundEffect : uint8_t {
+    Solid, Breathing, Wave, Comet, Twinkle, Rainbow,
+    Candle, Scanner, Checkerboard, ColorWave, Rain, Count
+};
+inline constexpr uint8_t effectCount = static_cast<uint8_t>(BackgroundEffect::Count);
+inline constexpr const char* effectOptions =
+    "Solid;Breathing;Wave;Comet;Twinkle;Rainbow;Candle;Scanner;Checkerboard;Color Wave;Rain";
+constexpr uint8_t countEffectOptions() {
+    uint8_t count = 1;
+    for (const char* p = effectOptions; *p; ++p) if (*p == ';') ++count;
+    return count;
+}
+static_assert(countEffectOptions() == effectCount, "Effect labels must match IDs");
+
 struct PirSettings {
     uint32_t onMs = 80;
     uint32_t offMs = 150;
@@ -41,7 +56,7 @@ struct LightSettings {
     void normalize() {
         backgroundColor &= 0xFFFFFF;
         motionColor &= 0xFFFFFF;
-        effect = std::min<uint8_t>(effect, 5);
+        effect = std::min<uint8_t>(effect, effectCount - 1);
         stepDelayMs = std::min<uint32_t>(stepDelayMs, 3000);
         fadeInMs = std::min<uint32_t>(fadeInMs, 10000);
         fadeOutMs = std::min<uint32_t>(fadeOutMs, 10000);
@@ -53,5 +68,3 @@ struct LightSettings {
         }
     }
 };
-
-inline constexpr const char* effectOptions = "Solid;Breathing;Wave;Comet;Twinkle;Rainbow";

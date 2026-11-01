@@ -104,7 +104,7 @@ void HaBridge::onColor(HALight::RGBColor value, HALight* sender) {
 }
 void HaBridge::onEffect(int8_t value, HASelect*) {
     auto& self = *instance_;
-    if (value < 0 || value > 5) return;
+    if (value < 0 || value >= effectCount) return;
     auto next = self.settings_;
     next.effect = value;
     self.apply_(next);

@@ -4,8 +4,8 @@
 #include <cstdint>
 
 namespace hw {
-inline constexpr int pirBottomPin = 26;
-inline constexpr int pirTopPin = 25;
+inline constexpr int pirBottomPin = 25;
+inline constexpr int pirTopPin = 26;
 inline constexpr int ledPin = 23;
 inline constexpr bool sacrificialLed = true;
 inline constexpr bool firstStepReversed = true;

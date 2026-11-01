@@ -14,6 +14,10 @@ fi
     "$@" -Iinclude test/test_logic.cpp -o .test-build/test_logic
 .test-build/test_logic
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined \
+    "$@" -Iinclude test/test_effects.cpp -o .test-build/test_effects
+.test-build/test_effects
+
 subjectlab=${SUBJECTLAB_DIR:-.pio/libdeps/esp32-usb/subjectLab}
 if [ ! -f "$subjectlab/src/Async.cpp" ]; then
     echo 'Install dependencies with pio pkg install -e esp32-usb, or set SUBJECTLAB_DIR' >&2
